@@ -1345,6 +1345,108 @@ elif intent == "UnitConversion":
     speech(str(number) + " " + unit1 + " is " + str(round(finalValue,3)).replace("." , " point ") + " " + unit2)
 ```
 
+# Adding satellites
+But you might want more than one smart speaker, and setting them up as full instances seems somewhat wasteful when we've got a perfectly good CPU on our main node. Why not use the power of *that* node to manage ***all*** speakers?
+
+## Raspberry Pi 2/3
+
+Just so you know, using a Pi 3 for this is huge excess, and even a Pi 2 is a bit much, I'm just using it here because I already had one to test on. We don't need something this powerful.
+
+### Flashing with Raspbian
+
+This is just like with the main node, however this time we can use 32-bit Pi OS Lite, since we don't need to take advantage of all of the power of the Pi, and this allows it to run on the Pi 2 too.
+
+![Selecting Pi OS 32 bit lite](https://github.com/IssacDowling/SelfhostedSmartHomeGuide/blob/0eef6842d9a259c6076ee01c0aae0d80759c0078/images/Raspbian%20%2032bit%20lite.png)
+
+Just remember that the Pi 2 and earlier do not have Wifi, so don't set that up, you'll be relying on Ethernet, or a separately set up USB Wifi dongle. In my case, for initial setup, I'll just use ethernet. I'm going to make my username/hostname **assistant-secondary-node** to go along with my **assistant-main-node** from before, however in the future I would probably name these based on their rooms/positions instead.
+
+### Installing software
+
+Once you've flashed the SD card, insert it, boot the Pi, and - in your terminal - ssh into your new hostname. So, I would run
+```
+ssh assistant-secondary-node@assistant-secondary-node.local
+```
+to get in.
+
+Then, run an update like this:
+```
+sudo apt update && sudo apt upgrade -y
+```
+and then install docker just like before, by pasting these lines:
+```
+curl -sSL https://get.docker.com | sh
+sudo apt-get install -y uidmap libffi-dev libssl-dev python3 python3-pip python3-dev
+sudo pip3 install docker-compose
+sudo gpasswd -a $USER docker
+```
+and also get Rhasspy ready by running
+```
+mkdir assistant
+cd assistant
+nano docker-compose.yml
+```
+and pasting the following:
+```
+version: '3.3'
+services:
+    rhasspy:
+        container_name: rhasspy
+        ports:
+            - '12101:12101'
+            - '12183:12183'
+        volumes:
+            - './profiles:/profiles'
+            - '/etc/localtime:/etc/localtime:ro'
+        devices:
+            - '/dev/snd:/dev/snd'
+        image: rhasspy/rhasspy
+        command: --user-profiles /profiles --profile en
+        restart: unless-stopped
+```
+Then do CTRL+X, Y, ENTER to save, and run:
+```
+sudo docker-compose up -d
+```
+to start the install. Just like before, it's done once you see this:
+![Done docker](https://github.com/IssacDowling/SelfhostedVoiceAssistantGuide/blob/main/images/donedocker.png)
+
+### Setting a static IP
+
+And again, as before, we'll want to set a static IP. I'm going to copy and paste the section from earlier.
+
+In your terminal, type ```ip route | grep default```. Then, note down three things: the first IP, the network device, and the second IP. The IPs will likely be 192.168.x.x, but may be different. In the image, I've highlighted these things in yellow so you know where to look.
+
+![my private IP for the Pi](https://github.com/IssacDowling/SelfhostedVoiceAssistantGuide/blob/main/images/ipdefault.png)
+
+Now, run
+```
+sudo nano /etc/dhcpcd.conf
+```
+and navigate down to the bottom line using the arrow keys, then press enter a few times to add some lines. You should get to here:
+
+![dhcpcd](https://github.com/IssacDowling/SelfhostedVoiceAssistantGuide/blob/main/images/dhcpcd.png)
+
+Then, paste this in:
+
+```
+interface
+static ip_address=/24
+static routers=
+static domain_name_servers=1.1.1.1
+```
+
+Next to interface, add a space, then the network device (either **eth0** or **wlan0**). Now, for static ip_address, type the second IP before the */24*. Finally, add the first IP from earlier directly after **static routers=**. Then, press CTRL+X, then Y, then Enter, to save and exit. Finally, run ```sudo reboot``` to restart. Your SSH will disconnect, and you can just keep trying to reconnect until it works to check if you're booted.
+
+### Setting it up
+
+First, go to your main node's settings page, and set the **"siteId"** to something other than default. I picked **"main-node"**. Next, do the same with your secondary node, calling it something else. I picked **"secondary-node"**. Remember to save your settings.
+
+
+Next, set audio recording to pyaudio, wakeword to porcupine, audio recording to aplay, disable intent handling, set dialogue management to Rhasspy, and then everything else to Remote HTTP.
+
+MQTT would be better, but I haven't figured it all out yet.
+
+Now, 
 
 # Resources
 There's a folder called resources in this git repo. It contains any files of mine (or somebody else's, if they're ok with it) that you might want. Any API keys or related stuff in code will be blocked out, however they're otherwise unmodified.
